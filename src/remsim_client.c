@@ -42,6 +42,68 @@
 #include "client.h"
 #include "debug.h"
 
+/* high-level procedures between "card emulation part"  and "remsim client part":
+ * (MO = Modem Originated; MT = Modem Terminated)
+ * 	- MO: Power / RST / Clock status changes
+ * 	- MT: Card Insert simulation
+ * 	  - physical card insert contact
+ * 	  - logical card insert, i.e. react to modem signaling
+ * 	- MT: Set ATR (stored in card emulation part for quick response)
+ * 	- MO: command TPDU
+ * 	- MT: response TPDU (just SW, or DATA + SW)
+ */
+
+static struct bankd_client *g_client;
+
+static int bankd_handle_tpduCardToModem(struct bankd_client *bc, RsproPDU_t *pdu)
+{
+	OSMO_ASSERT(pdu);
+	OSMO_ASSERT(RsproPDUchoice_PR_tpduCardToModem == pdu->msg.present);
+
+	const struct TpduCardToModem *card2modem = &pdu->msg.choice.tpduCardToModem;
+	if (card2modem->data.size < 2) { // at least the two SW bytes are needed
+		return -1;
+	}
+
+#if 0
+	// save SW to our current APDU context
+	ac.sw[0] = card2modem->data.buf[card2modem->data.size - 2];
+	ac.sw[1] = card2modem->data.buf[card2modem->data.size - 1];
+	printf("SIMtrace <= SW=0x%02x%02x, len_rx=%d\n", ac.sw[0], ac.sw[1], card2modem->data.size - 2);
+	if (card2modem->data.size > 2) { // send PB and data to modem
+		cardem_request_pb_and_tx(ci, ac.hdr.ins, card2modem->data.buf, card2modem->data.size - 2);
+	}
+	cardem_request_sw_tx(ci, ac.sw); // send SW to modem
+#endif
+
+	return 0;
+}
+
+static int bankd_handle_setAtrReq(struct bankd_client *bc, RsproPDU_t *pdu)
+{
+	RsproPDU_t *resp;
+	int rc;
+
+	OSMO_ASSERT(pdu);
+	OSMO_ASSERT(RsproPDUchoice_PR_setAtrReq == pdu->msg.present);
+
+#if 0
+	/* FIXME: is this permitted at any time by the SIMtrace2 cardemfirmware? */
+	rc = cardem_request_set_atr(ci, pdu->msg.choice.setAtrReq.atr.buf,
+				    pdu->msg.choice.setAtrReq.atr.size);
+#endif
+	if (rc == 0)
+		resp = rspro_gen_SetAtrRes(ResultCode_ok);
+	else
+		resp = rspro_gen_SetAtrRes(ResultCode_cardTransmissionError);
+	if (!resp)
+		return -ENOMEM;
+	bankd_conn_send_rspro(g_client, resp);
+
+	return 0;
+}
+
+
 static int bankd_handle_msg(struct bankd_client *bc, struct msgb *msg)
 {
 	RsproPDU_t *pdu = rspro_dec_msg(msg);
@@ -58,6 +120,12 @@ static int bankd_handle_msg(struct bankd_client *bc, struct msgb *msg)
 		rspro_comp_id_retrieve(&bc->peer_comp_id, &pdu->msg.choice.connectClientRes.identity);
 		osmo_fsm_inst_dispatch(bc->bankd_fi, BDC_E_CLIENT_CONN_RES, pdu);
 		break;
+	case RsproPDUchoice_PR_tpduCardToModem:
+		bankd_handle_tpduCardToModem(bc, pdu);
+		break;
+	case RsproPDUchoice_PR_setAtrReq:
+		bankd_handle_setAtrReq(bc, pdu);
+		break;
 	default:
 		LOGPFSML(bc->bankd_fi, LOGL_ERROR, "Unknown/Unsuppoerted RSPRO PDU %s: %s\n",
 			 rspro_msgt_name(pdu), msgb_hexdump(msg));
@@ -67,6 +135,7 @@ static int bankd_handle_msg(struct bankd_client *bc, struct msgb *msg)
 	return 0;
 }
 
+/* handle incoming messages from bankd */
 int bankd_read_cb(struct ipa_client_conn *conn, struct msgb *msg)
 {
 	struct ipaccess_head *hh = (struct ipaccess_head *) msg->data;
@@ -116,7 +185,6 @@ invalid:
 	return -1;
 }
 
-static struct bankd_client *g_client;
 static void *g_tall_ctx;
 void __thread *talloc_asn1_ctx;
 int asn_debug;
@@ -168,7 +236,13 @@ static void handle_sig_usr1(int signal)
 	talloc_report_full(g_tall_ctx, stderr);
 }
 
-static void printf_help()
+static void print_welcome(void)
+{
+	printf("remsim-client - Remote SIM card client for SIMtrace\n"
+	       "(C) 2010-2019, Harald Welte <laforge@gnumonks.org>\n");
+}
+
+static void print_help()
 {
 	printf(
 		"  -h --help                  Print this help message\n"
@@ -199,7 +273,7 @@ static void handle_options(int argc, char **argv)
 
 		switch (c) {
 		case 'h':
-			printf_help();
+			print_help();
 			exit(0);
 			break;
 		case 'i':
@@ -232,7 +306,6 @@ int main(int argc, char **argv)
 	g_tall_ctx = talloc_named_const(NULL, 0, "global");
 	talloc_asn1_ctx = talloc_named_const(g_tall_ctx, 0, "asn1");
 	msgb_talloc_ctx_init(g_tall_ctx, 0);
-
 	osmo_init_logging2(g_tall_ctx, &log_info);
 
 	g_client = talloc_zero(g_tall_ctx, struct bankd_client);
@@ -245,6 +318,8 @@ int main(int argc, char **argv)
 	OSMO_STRLCPY_ARRAY(srvc->own_comp_id.name, "fixme-name");
 	OSMO_STRLCPY_ARRAY(srvc->own_comp_id.software, "remsim-client");
 	OSMO_STRLCPY_ARRAY(srvc->own_comp_id.sw_version, PACKAGE_VERSION);
+
+	print_welcome();
 
 	handle_options(argc, argv);
 

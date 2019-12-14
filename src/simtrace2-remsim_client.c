@@ -701,6 +701,11 @@ static const struct option opts[] = {
 	{ NULL, 0, 0, 0 }
 };
 
+static void usb_log_cb(libusb_context *uctx, enum libusb_log_level level, const char *str)
+{
+	fprintf(stderr, "USB: %s", str);
+}
+
 int main(int argc, char **argv)
 {
 	struct rspro_server_conn *srvc, *bankdc;
@@ -803,6 +808,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "libusb initialization failed\n");
 		goto do_exit;
 	}
+
+	libusb_set_log_cb(NULL, usb_log_cb, LIBUSB_LOG_CB_GLOBAL);
+	libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, LIBUSB_LOG_LEVEL_INFO);
 
 	g_gti = gsmtap_source_init(gsmtap_host, GSMTAP_UDP_PORT, 0);
 	if (!g_gti) {

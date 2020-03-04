@@ -1,5 +1,13 @@
 <revhistory>
   <revision>
+    <revnumber>2020-03</revnumber>
+    <date>March 2020</date>
+    <authorinitials>HW</authorinitials>
+    <revremark>
+      Update to catch up with version 0.3 changes.
+    </revremark>
+  </revision>
+  <revision>
     <revnumber>1</revnumber>
     <date>March 2019</date>
     <authorinitials>HW</authorinitials>
@@ -24,7 +32,7 @@
 </authorgroup>
 
 <copyright>
-  <year>2019</year>
+  <year>2019-2020</year>
   <holder>sysmocom - s.f.m.c. GmbH</holder>
 </copyright>
 

@@ -12,12 +12,9 @@
 # license that conforms to the Open Source Definition (Version 1.9)
 # published by the Open Source Initiative.
 
-# Please submit bugfixes or comments via http://bugs.opensuse.org/
-#
-
 %define sover 1
 Name:           osmo-remsim
-Version:        0.2.2.86
+Version:        0.0.0
 Release:        0
 Summary:        Osmocom remote SIM software suite
 License:        GPL-2.0-or-later
@@ -29,7 +26,11 @@ BuildRequires:  automake
 BuildRequires:  libcsv-devel
 BuildRequires:  libtool
 BuildRequires:  pkgconfig
+%if 0%{?centos_ver}
+BuildRequires:  systemd
+%else
 BuildRequires:  systemd-rpm-macros
+%endif
 BuildRequires:  pkgconfig(libasn1c) >= 0.9.30
 BuildRequires:  pkgconfig(libosmoabis)
 BuildRequires:  pkgconfig(libosmocore) >= 0.11.0
@@ -159,6 +160,7 @@ make %{?_smp_mflags} check || find . -name testsuite.log -exec cat {} +
 %post   -n libosmo-rspro%{sover} -p /sbin/ldconfig
 %postun -n libosmo-rspro%{sover} -p /sbin/ldconfig
 
+%if 0%{?suse_version}
 %pre    -n osmo-remsim-bankd %service_add_pre     osmo-remsim-bankd.service
 %post   -n osmo-remsim-bankd %service_add_post    osmo-remsim-bankd.service
 %preun  -n osmo-remsim-bankd %service_del_preun   osmo-remsim-bankd.service
@@ -173,6 +175,7 @@ make %{?_smp_mflags} check || find . -name testsuite.log -exec cat {} +
 %post   -n osmo-remsim-server %service_add_post   osmo-remsim-server.service
 %preun  -n osmo-remsim-server %service_del_preun  osmo-remsim-server.service
 %postun -n osmo-remsim-server %service_del_postun osmo-remsim-server.service
+%endif
 
 %files -n libosmo-rspro%{sover}
 %license COPYING
